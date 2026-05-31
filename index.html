@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PartyMatch - Integrator Gości Weselnych</title>
+    
+    <!-- Google Fonts: Playfair Display for headers, Outfit for UI -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    
+    <!-- Lucide Icons (CDN) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- QR Code Generator (QRious - lightweight and pure JS) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+    
+    <!-- QR Code Scanner (HTML5-QRCode - lightweight client-side scanner) -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    
+    <!-- Canvas Confetti for mission completion celebration -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <!-- App Styles -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- BACKGROUND EFFECTS -->
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+    
+    <!-- APP WRAPPER -->
+    <div class="app-container">
+        
+        <!-- SECTION 1: ONBOARDING / REJESTRACJA -->
+        <section id="screen-onboarding" class="screen active">
+            <!-- Onboarding Header -->
+            <div class="onboarding-header">
+                <button id="btn-onboarding-admin" class="btn-icon" title="Panel Organizatora">
+                    <i data-lucide="settings"></i>
+                </button>
+            </div>
+
+            <!-- Wedding Banner -->
+            <div class="wedding-banner font-serif">
+                Dzisiaj bawimy się za zdrowie Wiktorii i Przemka! 🥂
+            </div>
+
+            <div class="luxury-card onboarding-card">
+                <div class="brand-header">
+                    <div class="logo-icon"><i data-lucide="sparkles"></i></div>
+                    <h1 class="font-serif gold-text">PartyMatch</h1>
+                    <p class="subtitle">Weselny Integrator Gości</p>
+                </div>
+                
+                <p class="intro-text">
+                    Połącz stoły Wiktorii i Przemka, wykonuj wyzwania, wysyłaj toasty i poznaj bliżej weselników!
+                </p>
+                
+                <form id="form-onboarding">
+                    <!-- Name input -->
+                    <div class="input-group">
+                        <label for="input-name"><i data-lucide="user"></i> Twoje Imię</label>
+                        <input type="text" id="input-name" placeholder="np. Kasia, Tomek..." required maxlength="15">
+                    </div>
+                    
+                    <!-- Table input -->
+                    <div class="input-group">
+                        <label for="input-table"><i data-lucide="grid"></i> Numer Stolika</label>
+                        <input type="number" id="input-table" placeholder="np. 4" required min="1" max="50">
+                    </div>
+                    
+                    <!-- Team input -->
+                    <div class="input-group">
+                        <label><i data-lucide="users"></i> Z której strony jesteś?</label>
+                        <div class="team-selectors-two">
+                            <label class="team-option">
+                                <input type="radio" name="input-team" value="Panna Młoda" checked>
+                                <span class="team-btn bride-btn">Wiktoria (Panna Młoda)</span>
+                            </label>
+                            <label class="team-option">
+                                <input type="radio" name="input-team" value="Pan Młody">
+                                <span class="team-btn groom-btn">Przemek (Pan Młody)</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Avatar selection -->
+                    <div class="input-group">
+                        <label><i data-lucide="smile"></i> Wybierz Awatar</label>
+                        <div class="avatar-scroll" id="avatar-container">
+                            <!-- Injected by JavaScript -->
+                        </div>
+                    </div>
+                    
+                    <!-- Tag selection -->
+                    <div class="input-group">
+                        <label><i data-lucide="tag"></i> Wybierz dokładnie 3 cechy (tagi):</label>
+                        <div class="tags-grid" id="tags-container">
+                            <!-- Injected by JavaScript -->
+                        </div>
+                        <p class="tag-counter">Wybrano: <span id="tag-count">0</span>/3</p>
+                    </div>
+                    
+                    <!-- Submit button -->
+                    <button type="submit" id="btn-start" class="btn btn-gold btn-block" disabled>
+                        <span>Wejdź do gry</span> <i data-lucide="arrow-right"></i>
+                    </button>
+                </form>
+
+                <!-- DJ Branding Footer (Onboarding) -->
+                <div class="dj-branding-footer" id="onboarding-dj-footer">
+                    <!-- Injected by JS -->
+                </div>
+            </div>
+        </section>
+        
+        <!-- SECTION 2: MAIN DASHBOARD (Visible after onboarding) -->
+        <section id="screen-dashboard" class="screen">
+            <!-- Wedding Banner -->
+            <div class="wedding-banner font-serif">
+                Dzisiaj bawimy się za zdrowie Wiktorii i Przemka! 🥂
+            </div>
+
+            <!-- App Top Header -->
+            <header class="app-header glass-card">
+                <div class="user-summary">
+                    <div class="user-avatar-small" id="header-avatar">🤵</div>
+                    <div class="user-meta">
+                        <h4 id="header-name">Karol</h4>
+                        <p id="header-details">Stół 4 • Team Pan Młody</p>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button id="btn-admin-panel" class="btn-icon" title="Panel Organizatora">
+                        <i data-lucide="settings"></i>
+                    </button>
+                    <div class="points-badge">
+                        <i data-lucide="trophy" class="gold-icon"></i>
+                        <span id="header-points">0</span> pkt
+                    </div>
+                </div>
+            </header>
+            
+            <!-- MAIN TAB CONTENT AREA -->
+            <main class="app-main">
+                
+                <!-- TAB 1: 🎯 MISJA (CURRENT MISSION) -->
+                <div id="tab-mission" class="tab-content active">
+                    <div class="tab-title">
+                        <h2>Twoja Misja</h2>
+                        <p class="section-desc">Wykonaj zadanie, aby zdobyć punkty i zintegrować się z salą!</p>
+                    </div>
+                    
+                    <!-- Mission Display Card -->
+                    <div id="mission-card-wrapper">
+                        <!-- Injected by JS: Active Mission or Empty State -->
+                    </div>
+                </div>
+                
+                <!-- TAB 2: 🏆 RANKING (LEADERBOARD) -->
+                <div id="tab-leaderboard" class="tab-content">
+                    <div class="tab-title">
+                        <h2>Tabela Liderów</h2>
+                        <p class="section-desc">Najbardziej towarzyscy goście dzisiejszego wieczoru!</p>
+                    </div>
+                    
+                    <!-- Generuj Raport wrapped button - MOVED TO THE TOP FOR UX EXCELLENCE! -->
+                    <button id="btn-open-wrapped" class="btn btn-gold btn-block" style="margin-bottom: 16px; border: 1px solid rgba(191,149,63,0.4);">
+                        <i data-lucide="instagram"></i> Weselny Raport na Insta! 📸
+                    </button>
+                    
+                    <div class="glass-card leaderboard-card">
+                        <div class="leaderboard-header">
+                            <span>Miejsce & Gość</span>
+                            <span>Wynik</span>
+                        </div>
+                        <div class="leaderboard-list" id="leaderboard-list">
+                            <!-- Injected by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- TAB 3: 💬 TOAST (ICEBREAKERS) -->
+                <div id="tab-toast" class="tab-content">
+                    <div class="tab-title">
+                        <h2>Toast Serc</h2>
+                        <p class="section-desc">Wyślij miłą lub zabawną wiadomość lodołamacz do innego gościa!</p>
+                    </div>
+                    
+                    <div class="glass-card toast-form-card">
+                        <div class="input-group">
+                            <label for="select-recipient"><i data-lucide="user-plus"></i> Wybierz gościa</label>
+                            <select id="select-recipient" class="custom-select">
+                                <option value="" disabled selected>Wybierz kogoś ze stołu...</option>
+                                <!-- Injected by JavaScript -->
+                            </select>
+                        </div>
+                        
+                        <div class="input-group">
+                            <label><i data-lucide="mail-open"></i> Wybierz lodołamacz (toast)</label>
+                            <div class="toast-options-grid" id="toast-options-container">
+                                <!-- Injected by JavaScript -->
+                            </div>
+                        </div>
+                        
+                        <button id="btn-send-toast" class="btn btn-gold btn-block" disabled>
+                            <i data-lucide="send"></i> Wyślij Toast
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- TAB 4: 📇 MÓJ KOD (MY PROFILE & QR) -->
+                <div id="tab-mycode" class="tab-content">
+                    <div class="tab-title">
+                        <h2>Mój Kod QR</h2>
+                        <p class="section-desc">Pokaż ten kod innym gościom, gdy chcą zaliczyć misję powiązaną z Tobą!</p>
+                    </div>
+                    
+                    <div class="luxury-card qr-display-card">
+                        <div class="qr-container-box">
+                            <canvas id="profile-qr"></canvas>
+                            <div class="qr-glow"></div>
+                        </div>
+                        
+                        <div class="backup-pin-box">
+                            <p class="pin-label">Gdyby aparat nie działał, podaj ten PIN:</p>
+                            <div class="pin-value" id="profile-pin">1234</div>
+                        </div>
+                        
+                        <div class="my-tags-list" id="profile-tags">
+                            <!-- Injected by JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DJ Branding Footer (Dashboard main area scroll) -->
+                <div class="dj-branding-footer" id="dashboard-dj-footer">
+                    <!-- Injected by JS -->
+                </div>
+                
+            </main>
+            
+            <!-- BOTTOM TAB NAVIGATION BAR -->
+            <nav class="app-nav glass-card">
+                <button class="nav-item active" data-tab="mission">
+                    <i data-lucide="target"></i>
+                    <span>Misja</span>
+                </button>
+                <button class="nav-item" data-tab="leaderboard">
+                    <i data-lucide="trophy"></i>
+                    <span>Ranking</span>
+                </button>
+                <button class="nav-item" data-tab="toast">
+                    <i data-lucide="message-circle"></i>
+                    <span>Toast</span>
+                </button>
+                <button class="nav-item" data-tab="mycode">
+                    <i data-lucide="qr-code"></i>
+                    <span>Mój Kod</span>
+                </button>
+            </nav>
+        </section>
+        
+        <!-- MODAL: QR CODE CAMERA SCANNER -->
+        <div id="modal-scanner" class="modal">
+            <div class="modal-content glass-card">
+                <div class="modal-header">
+                    <h3>Zeskanuj Kod Gościa</h3>
+                    <button class="btn-close-modal" id="btn-close-scanner"><i data-lucide="x"></i></button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-instruction">Skieruj aparat na kod QR wyświetlony na telefonie drugiego gościa.</p>
+                    
+                    <!-- Scanner camera box -->
+                    <div class="scanner-camera-container">
+                        <div id="scanner-view"></div>
+                        <div class="scanner-laser"></div>
+                    </div>
+                    
+                    <div class="divider">lub wprowadź kod ręcznie</div>
+                    
+                    <!-- PIN manual entry form -->
+                    <div class="pin-entry-form">
+                        <input type="text" id="input-pin-verify" placeholder="4-cyfrowy PIN" maxlength="4" pattern="\d{4}" inputmode="numeric">
+                        <button id="btn-verify-pin-submit" class="btn btn-gold">Zatwierdź PIN</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- MODAL: INCOMING COMPLIMENT / TOAST -->
+        <div id="modal-notification" class="modal">
+            <div class="modal-content glass-card premium-border">
+                <div class="celebration-icon"><i data-lucide="heart"></i></div>
+                <h2 class="font-serif gold-text" id="notification-title">Toast dla Ciebie!</h2>
+                <div class="notification-body">
+                    <p class="notification-sender" id="notification-sender">Kasia ze stolika 3</p>
+                    <div class="notification-message-box">
+                        <span class="quote-mark">“</span>
+                        <p id="notification-text">Masz niesamowitą energię na parkiecie! Zatańczymy?</p>
+                        <span class="quote-mark text-right">”</span>
+                    </div>
+                </div>
+                <button class="btn btn-gold" id="btn-close-notification">Wznieś toast w odpowiedzi!</button>
+            </div>
+        </div>
+
+        <!-- MODAL: ORGANIZER / ADMIN PANEL (Dynamic Mission Management) -->
+        <div id="modal-admin" class="modal">
+            <div class="modal-content glass-card">
+                <div class="modal-header">
+                    <h3>Panel Organizatora (Wiktoria & Przemek)</h3>
+                    <button class="btn-close-modal" id="btn-close-admin"><i data-lucide="x"></i></button>
+                </div>
+                <div class="modal-body" style="max-height: 80vh; overflow-y: auto; padding-right: 4px;">
+                    
+                    <!-- DYNAMIC DEMO MODE CONFIGURATION -->
+                    <div class="toggle-container">
+                        <div class="toggle-label-box">
+                            <strong>Tryb Demonstracyjny (Demo)</strong>
+                            <span>Włącz boty i panel testowy do prezentacji solo.</span>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="checkbox-demo-mode" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="divider" style="margin: 12px 0;">Wizytówka DJ-a / Wodzireja</div>
+                    
+                    <p class="modal-instruction" style="text-align: left; margin-bottom: 8px;">Wpisz swoje dane, aby goście widzieli Twój Instagram na dole ekranu!</p>
+                    
+                    <div class="input-group" style="margin-bottom:10px;">
+                        <label for="input-dj-name"><i data-lucide="headphones"></i> Nazwa Artystyczna</label>
+                        <input type="text" id="input-dj-name" placeholder="np. DJ Przemek, Wodzirej Michał">
+                    </div>
+                    
+                    <div class="input-group" style="margin-bottom:16px;">
+                        <label for="input-dj-insta"><i data-lucide="instagram"></i> Link do Instagrama</label>
+                        <input type="url" id="input-dj-insta" placeholder="np. https://instagram.com/dj_przemek">
+                    </div>
+
+                    <div class="divider" style="margin: 12px 0;">Zarządzanie wyzwaniami</div>
+                    
+                    <p class="modal-instruction" style="margin-bottom:12px;">Zarządzaj pulą misji integracyjnych krążących po sali weselnej.</p>
+                    
+                    <!-- Scrollable active mission templates list -->
+                    <label class="admin-label-title"><i data-lucide="list"></i> Aktywne Wyzwania</label>
+                    <div class="admin-missions-list" id="admin-missions-container">
+                        <!-- Injected by JS -->
+                    </div>
+                    
+                    <div class="divider" style="margin: 12px 0;">Dodaj własną misję</div>
+                    
+                    <!-- Add new template form -->
+                    <div class="admin-add-form">
+                        <div class="admin-guide">
+                            Możesz używać tagów, które automatycznie podstawią dane celowanego gościa:
+                            <div style="margin-top: 6px;">
+                                <span class="var-badge" data-var="{name}">{name} (imię)</span>
+                                <span class="var-badge" data-var="{table}">{table} (stolik)</span>
+                                <span class="var-badge" data-var="{team}">{team} (strona)</span>
+                                <span class="var-badge" data-var="{tag}">{tag} (cecha)</span>
+                            </div>
+                        </div>
+                        
+                        <div class="input-group" style="margin-bottom:12px;">
+                            <textarea id="textarea-new-mission" placeholder="np. Podejdź do {name} ze stolika {table} i zatańczcie krótki taniec..." rows="3" class="custom-textarea"></textarea>
+                        </div>
+                        
+                        <button id="btn-add-mission-submit" class="btn btn-gold btn-block">
+                            <i data-lucide="plus-circle"></i> Dodaj Wyzwanie do Wesela
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: INSTAGRAM STORIES WEDDING WRAPPED REPORT -->
+        <div id="modal-wrapped" class="modal">
+            <div class="modal-content glass-card wrapped-modal-content">
+                <div class="modal-header">
+                    <h3>Raport Weselny</h3>
+                    <button class="btn-close-modal" id="btn-close-wrapped"><i data-lucide="x"></i></button>
+                </div>
+                
+                <!-- Instagram Story (9:16 aspect ratio layout container) -->
+                <div class="wrapped-story-card" id="instagram-story-card">
+                    <!-- Internal Glowing Lights -->
+                    <div class="story-bubble story-bubble-1"></div>
+                    <div class="story-bubble story-bubble-2"></div>
+                    
+                    <!-- Header -->
+                    <div class="story-header">
+                        <div class="story-header-logo"><i data-lucide="sparkles"></i> PARTYMATCH</div>
+                        <h4 class="font-serif story-title">WESELNY RAPORT INTEGRACJI</h4>
+                        <div class="story-couple font-serif">Wiktoria & Przemek</div>
+                    </div>
+                    
+                    <!-- Main statistics group -->
+                    <div class="story-stats-container">
+                        <!-- Stat 1: Ice broken -->
+                        <div class="story-stat-item">
+                            <div class="story-stat-number" id="wrapped-stat-missions">142</div>
+                            <div class="story-stat-label">przełamanych lodów na sali!</div>
+                        </div>
+                        
+                        <!-- Stat 2: Toasts sent -->
+                        <div class="story-stat-item">
+                            <div class="story-stat-number" id="wrapped-stat-toasts">84</div>
+                            <div class="story-stat-label">przesłanych cyfrowych toastów</div>
+                        </div>
+                        
+                        <!-- Stat 3: Best table -->
+                        <div class="story-stat-info">
+                            <div class="story-stat-icon">👑</div>
+                            <div class="story-stat-detail">
+                                <span class="story-stat-sub">NAJBARDZIEJ INTEGRACYJNY STÓŁ:</span>
+                                <strong id="wrapped-stat-table">Stolik nr 4</strong>
+                            </div>
+                        </div>
+
+                        <!-- Stat 4: Top trait -->
+                        <div class="story-stat-info">
+                            <div class="story-stat-icon">🔥</div>
+                            <div class="story-stat-detail">
+                                <span class="story-stat-sub">DOMINUJĄCA CECHA WESELNIKÓW:</span>
+                                <strong id="wrapped-stat-tag">🕺 Król Parkietu (73%)</strong>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Footer branding -->
+                    <div class="story-footer">
+                        <p class="story-footer-text">Połączyliśmy stoły i serca 🥂</p>
+                        <p class="story-footer-app font-serif">www.partymatch.pl</p>
+                    </div>
+                </div>
+                
+                <p class="modal-instruction" style="margin-top:0px; font-size:0.75rem;">
+                    📸 Zrób <strong>zrzut ekranu (screenshot)</strong>, wrzuć na swoją relację na Instagramie i oznacz <strong>#PartyMatch</strong> oraz młodą parę!
+                </p>
+            </div>
+        </div>
+
+        <!-- SIMULATOR CONTROL BAR (For testing multiplayer offline) -->
+        <div class="simulator-control glass-card" id="simulator-bar">
+            <span class="sim-label"><i data-lucide="terminal"></i> Panel Testowy (Multiplayer Demo)</span>
+            <div class="sim-buttons">
+                <button id="btn-sim-action" class="btn btn-outline btn-xs"><i data-lucide="play"></i> Symuluj aktywność sali</button>
+                <button id="btn-sim-incoming-toast" class="btn btn-outline btn-xs"><i data-lucide="message-square"></i> Odbierz losowy toast</button>
+            </div>
+        </div>
+        
+    </div>
+
+    <!-- App Script -->
+    <script src="app.js"></script>
+    <script>
+        // Trigger lucide icons render
+        lucide.createIcons();
+    </script>
+</body>
+</html>
