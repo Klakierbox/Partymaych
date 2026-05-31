@@ -44,7 +44,7 @@
             </div>
 
             <!-- Wedding Banner -->
-            <div class="wedding-banner font-serif">
+            <div class="wedding-banner font-serif" id="wedding-banner-onboarding">
                 Dzisiaj bawimy się za zdrowie Wiktorii i Przemka! 🥂
             </div>
 
@@ -55,7 +55,7 @@
                     <p class="subtitle">Weselny Integrator Gości</p>
                 </div>
                 
-                <p class="intro-text">
+                <p class="intro-text" id="onboarding-intro-text">
                     Połącz stoły Wiktorii i Przemka, wykonuj wyzwania, wysyłaj toasty i poznaj bliżej weselników!
                 </p>
                 
@@ -84,11 +84,11 @@
                         <div class="team-selectors-two">
                             <label class="team-option">
                                 <input type="radio" name="input-team" value="Panna Młoda" checked>
-                                <span class="team-btn bride-btn">Wiktoria (Panna Młoda)</span>
+                                <span class="team-btn bride-btn" id="team-btn-bride">Wiktoria (Panna Młoda)</span>
                             </label>
                             <label class="team-option">
                                 <input type="radio" name="input-team" value="Pan Młody">
-                                <span class="team-btn groom-btn">Przemek (Pan Młody)</span>
+                                <span class="team-btn groom-btn" id="team-btn-groom">Przemek (Pan Młody)</span>
                             </label>
                         </div>
                     </div>
@@ -126,7 +126,7 @@
         <!-- SECTION 2: MAIN DASHBOARD (Visible after onboarding) -->
         <section id="screen-dashboard" class="screen">
             <!-- Wedding Banner -->
-            <div class="wedding-banner font-serif">
+            <div class="wedding-banner font-serif" id="wedding-banner-dashboard">
                 Dzisiaj bawimy się za zdrowie Wiktorii i Przemka! 🥂
             </div>
 
@@ -344,11 +344,29 @@
             </div>
         </div>
 
+        <!-- MODAL: ADMIN AUTH (PIN PROTECTION) -->
+        <div id="modal-admin-auth" class="modal" style="z-index: 2100;">
+            <div class="modal-content glass-card premium-border" style="text-align: center; padding: 24px 20px; max-width: 320px; margin: auto;">
+                <div class="celebration-icon" style="color: var(--gold-primary); margin-bottom: 12px;"><i data-lucide="lock" style="width: 48px; height: 48px; margin: auto;"></i></div>
+                <h2 class="font-serif gold-text" style="font-size: 1.3rem; margin-bottom: 12px;">Panel Organizatora</h2>
+                <p class="section-desc" style="font-size: 0.85rem; line-height: 1.4; margin-bottom: 20px; color: var(--text-muted);">
+                    Wpisz 4-cyfrowy PIN, aby wejść do ustawień:
+                </p>
+                <div class="pin-entry-form" style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
+                    <input type="password" id="input-admin-pin" placeholder="PIN" maxlength="4" pattern="\d{4}" inputmode="numeric" style="font-family: inherit; font-size: 1.5rem; text-align: center; letter-spacing: 0.3em; padding: 10px; border-radius: var(--border-radius-md); border: 1px solid var(--glass-border); background: rgba(0,0,0,0.2); color: #fff; width: 100%; outline: none;">
+                    <div style="display: flex; gap: 8px; width: 100%;">
+                        <button id="btn-admin-auth-submit" class="btn btn-gold" style="flex: 2; padding: 10px;">Zaloguj</button>
+                        <button id="btn-admin-auth-close" class="btn btn-outline" style="flex: 1; padding: 10px;">Anuluj</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- MODAL: ORGANIZER / ADMIN PANEL (Dynamic Mission Management) -->
         <div id="modal-admin" class="modal">
             <div class="modal-content glass-card">
                 <div class="modal-header">
-                    <h3>Panel Organizatora (Wiktoria & Przemek)</h3>
+                    <h3>Panel Organizatora <span id="admin-header-couple" style="color:var(--gold-light);"></span></h3>
                     <button class="btn-close-modal" id="btn-close-admin"><i data-lucide="x"></i></button>
                 </div>
                 <div class="modal-body" style="max-height: 80vh; overflow-y: auto; padding-right: 4px;">
@@ -360,9 +378,15 @@
                             <span>Włącz boty i panel testowy do prezentacji solo.</span>
                         </div>
                         <label class="switch">
-                            <input type="checkbox" id="checkbox-demo-mode" checked>
+                            <input type="checkbox" id="checkbox-demo-mode">
                             <span class="slider"></span>
                         </label>
+                    </div>
+
+                    <div class="divider" style="margin: 12px 0;">Dane Wesela</div>
+                    <div class="input-group" style="margin-bottom:16px;">
+                        <label for="input-couple-names"><i data-lucide="heart"></i> Imiona Pary Młodej</label>
+                        <input type="text" id="input-couple-names" placeholder="np. Wiktoria & Przemek">
                     </div>
 
                     <div class="divider" style="margin: 12px 0;">Wizytówka DJ-a / Wodzireja</div>
@@ -433,7 +457,7 @@
                     <div class="story-header">
                         <div class="story-header-logo"><i data-lucide="sparkles"></i> PARTYMATCH</div>
                         <h4 class="font-serif story-title">WESELNY RAPORT INTEGRACJI</h4>
-                        <div class="story-couple font-serif">Wiktoria & Przemek</div>
+                        <div class="story-couple font-serif" id="instagram-story-couple">Wiktoria & Przemek</div>
                     </div>
                     
                     <!-- Main statistics group -->

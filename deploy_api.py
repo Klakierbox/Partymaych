@@ -25,30 +25,16 @@ def deploy():
             print(f"❌ Krytyczny błąd połączenia z serwerem FTP: {e2}")
             sys.exit(1)
 
-    # Zapewnienie katalogu partymatch na FTP
-    remote_dir = "/partymatch"
-    try:
-        ftp.cwd(remote_dir)
-        print(f"📁 Folder {remote_dir} istnieje na serwerze.")
-    except:
-        try:
-            ftp.mkd(remote_dir)
-            print(f"📁 Utworzono nowy folder na serwerze: {remote_dir}")
-        except Exception as mkdir_err:
-            print(f"⚠️ Błąd przy tworzeniu katalogu {remote_dir}: {mkdir_err}")
-            sys.exit(1)
-
-    # Wgrywanie pliku api.php
+    # Wgrywanie pliku api.php bezpośrednio do głównego katalogu (root) jako partymatch-api.php
     local_file = os.path.join(LOCAL_DIR, "api.php")
-    remote_file = "api.php"
+    remote_file = "partymatch-api.php"
     
     if not os.path.exists(local_file):
         print(f"❌ Błąd: Nie znaleziono lokalnego pliku {local_file}")
         sys.exit(1)
 
-    print(f"📤 Wysyłanie pliku api.php do {remote_dir}/api.php ... ", end="", flush=True)
+    print(f"📤 Wysyłanie pliku api.php bezpośrednio do katalogu głównego (root) jako {remote_file} ... ", end="", flush=True)
     try:
-        ftp.cwd(remote_dir)
         with open(local_file, 'rb') as f:
             ftp.storbinary(f'STOR {remote_file}', f)
         print("OK ✅")
@@ -59,7 +45,7 @@ def deploy():
     ftp.quit()
     print("\n=======================================================")
     print("🎉 Sukces! Pomyślnie wdrożono API PHP na serwerze Hostido.")
-    print("🔗 Adres API: https://k-27lab.pl/partymatch/api.php")
+    print("🔗 Adres API: https://k-27lab.pl/partymatch-api.php")
     print("=======================================================")
 
 if __name__ == "__main__":

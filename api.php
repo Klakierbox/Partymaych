@@ -16,7 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 // Database JSON file path
-$dbFile = __DIR__ . '/guests.json';
+$dbFile = __DIR__ . '/partymatch_guests.json';
 
 // Helper function to read database safely
 function readDb($file) {

@@ -68,8 +68,11 @@ document.addEventListener('DOMContentLoaded', () => {
         djName: '',
         djInstagram: '',
 
-        // Demo Mode switch (ON by default so they can solo play out-of-the-box!)
-        demoMode: true
+        // Demo Mode switch (OFF by default so they can play live out-of-the-box!)
+        demoMode: false,
+
+        // Wedding couple names (Dynamic Banner & Wrapped support)
+        coupleNames: "Wiktoria & Przemek"
     };
 
     // QR Code scanner handle
@@ -138,6 +141,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const inputDjName = document.getElementById('input-dj-name');
     const inputDjInsta = document.getElementById('input-dj-insta');
     const checkboxDemoMode = document.getElementById('checkbox-demo-mode');
+    const inputCoupleNames = document.getElementById('input-couple-names');
+
+    // Admin Auth PIN Modal elements
+    const modalAdminAuth = document.getElementById('modal-admin-auth');
+    const inputAdminPin = document.getElementById('input-admin-pin');
+    const btnAdminAuthSubmit = document.getElementById('btn-admin-auth-submit');
+    const btnAdminAuthClose = document.getElementById('btn-admin-auth-close');
 
     // Instagram Wrapped Modal
     const btnOpenWrapped = document.getElementById('btn-open-wrapped');
@@ -240,11 +250,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Fallback for Demo Mode if missing in legacy state
                 if (gameState.demoMode === undefined) {
-                    gameState.demoMode = true;
+                    gameState.demoMode = false;
+                }
+
+                // Fallback for Couple Names if missing in legacy state
+                if (gameState.coupleNames === undefined) {
+                    gameState.coupleNames = "Wiktoria & Przemek";
                 }
 
                 updateDjBrandingFooters();
                 toggleDemoModeElements();
+                updateCoupleNamesUI();
 
                 if (gameState.user) {
                     // Sync immediately and go to dashboard
@@ -263,9 +279,11 @@ document.addEventListener('DOMContentLoaded', () => {
             gameState.toastsSentCount = 112;
             gameState.djName = '';
             gameState.djInstagram = '';
-            gameState.demoMode = true;
+            gameState.demoMode = false;
+            gameState.coupleNames = "Wiktoria & Przemek";
             updateDjBrandingFooters();
             toggleDemoModeElements();
+            updateCoupleNamesUI();
         }
 
         // Initialize virtual guests for simulation if not already exists
@@ -520,6 +538,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderAdminMissions();
         updateDjBrandingFooters();
         toggleDemoModeElements();
+        updateCoupleNamesUI();
     }
 
     // --- TAB SWITCHER LOGIC ---
@@ -1145,18 +1164,73 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Gears Settings click - Open Admin Modal
+    // Gears Settings click - Open Admin Modal (protected by PIN 4453)
     function openAdminPanel() {
         inputDjName.value = gameState.djName || '';
         inputDjInsta.value = gameState.djInstagram || '';
         checkboxDemoMode.checked = gameState.demoMode;
+        if (inputCoupleNames) {
+            inputCoupleNames.value = gameState.coupleNames || "Wiktoria & Przemek";
+        }
         
         modalAdmin.classList.add('active');
         renderAdminMissions();
     }
 
-    if (btnAdminPanel) btnAdminPanel.addEventListener('click', openAdminPanel);
-    if (btnOnboardingAdmin) btnOnboardingAdmin.addEventListener('click', openAdminPanel);
+    // Admin Auth Modal functions
+    function showAdminAuthModal() {
+        if (inputAdminPin) inputAdminPin.value = '';
+        if (modalAdminAuth) modalAdminAuth.classList.add('active');
+        if (inputAdminPin) inputAdminPin.focus();
+    }
+
+    function closeAdminAuthModal() {
+        if (modalAdminAuth) modalAdminAuth.classList.remove('active');
+    }
+
+    function handleAdminAuthSubmit() {
+        if (!inputAdminPin) return;
+        const enteredPin = inputAdminPin.value.trim();
+        if (enteredPin === "4453") {
+            closeAdminAuthModal();
+            openAdminPanel();
+        } else {
+            // Visual error feedback (red border)
+            inputAdminPin.style.borderColor = "#ef4444";
+            inputAdminPin.style.boxShadow = "0 0 10px rgba(239, 68, 68, 0.5)";
+            setTimeout(() => {
+                inputAdminPin.style.borderColor = "";
+                inputAdminPin.style.boxShadow = "";
+            }, 1000);
+            alert("Błędny PIN! Dostęp do Panelu Organizatora został zablokowany.");
+            inputAdminPin.value = '';
+            inputAdminPin.focus();
+        }
+    }
+
+    // Settings icon listeners (requires authentication)
+    if (btnAdminPanel) btnAdminPanel.addEventListener('click', showAdminAuthModal);
+    if (btnOnboardingAdmin) btnOnboardingAdmin.addEventListener('click', showAdminAuthModal);
+
+    // PIN auth modal controls
+    if (btnAdminAuthClose) btnAdminAuthClose.addEventListener('click', closeAdminAuthModal);
+    if (btnAdminAuthSubmit) btnAdminAuthSubmit.addEventListener('click', handleAdminAuthSubmit);
+    if (inputAdminPin) {
+        inputAdminPin.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                handleAdminAuthSubmit();
+            }
+        });
+    }
+
+    // Couple Names Input changes
+    if (inputCoupleNames) {
+        inputCoupleNames.addEventListener('input', () => {
+            gameState.coupleNames = inputCoupleNames.value.trim() || "Wiktoria & Przemek";
+            saveGameState();
+            updateCoupleNamesUI();
+        });
+    }
 
     // Close Admin Modal
     btnCloseAdmin.addEventListener('click', () => {
@@ -1359,6 +1433,48 @@ document.addEventListener('DOMContentLoaded', () => {
         const toastNavBtn = document.querySelector('.nav-item[data-tab="toast"]');
         if (toastNavBtn) toastNavBtn.click();
     });
+
+    // Dynamic Wedding Branding Names UI Updater
+    function updateCoupleNamesUI() {
+        const namesStr = gameState.coupleNames || "Wiktoria & Przemek";
+        
+        // Update Banners
+        const bannerOnboarding = document.getElementById('wedding-banner-onboarding');
+        const bannerDashboard = document.getElementById('wedding-banner-dashboard');
+        if (bannerOnboarding) bannerOnboarding.innerHTML = `Dzisiaj bawimy się za zdrowie ${namesStr}! 🥂`;
+        if (bannerDashboard) bannerDashboard.innerHTML = `Dzisiaj bawimy się za zdrowie ${namesStr}! 🥂`;
+        
+        // Update Instagram Story Wrapped
+        const storyCouple = document.getElementById('instagram-story-couple');
+        if (storyCouple) storyCouple.innerText = namesStr;
+        
+        // Update Organizer Header
+        const adminHeaderCouple = document.getElementById('admin-header-couple');
+        if (adminHeaderCouple) adminHeaderCouple.innerText = `(${namesStr})`;
+        
+        // Update Settings Input value (only if not currently focused by user editing)
+        const inputCoupleNames = document.getElementById('input-couple-names');
+        if (inputCoupleNames && document.activeElement !== inputCoupleNames) {
+            inputCoupleNames.value = namesStr;
+        }
+        
+        // Split names dynamically to get separate Bride & Groom names
+        const parts = namesStr.split(/&|i\s|and|,/);
+        const bride = parts[0] ? parts[0].trim() : 'Wiktoria';
+        const groom = parts[1] ? parts[1].trim() : 'Przemek';
+        
+        // Update team buttons in onboarding
+        const btnBride = document.getElementById('team-btn-bride');
+        const btnGroom = document.getElementById('team-btn-groom');
+        if (btnBride) btnBride.innerText = `${bride} (Panna Młoda)`;
+        if (btnGroom) btnGroom.innerText = `${groom} (Pan Młody)`;
+        
+        // Update welcome intro description text
+        const onboardingIntro = document.getElementById('onboarding-intro-text');
+        if (onboardingIntro) {
+            onboardingIntro.innerHTML = `Połącz stoły ${bride} i ${groom}, wykonuj wyzwania, wysyłaj toasty i poznaj bliżej weselników!`;
+        }
+    }
 
 
     // --- INITIATION RUN ---
