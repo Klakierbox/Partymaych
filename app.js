@@ -157,7 +157,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // 1. INITIALIZATION, ONBOARDING & SERVER API CONFIG
     // ==========================================================================
     
-    const API_URL = "https://k-27lab.pl/partymatch/api.php";
+    let API_URL = "api.php";
+    if (location.hostname === "localhost" || location.hostname === "127.0.0.1" || location.hostname.includes("onrender.com")) {
+        API_URL = "http://k-27lab.pl/partymatch/api.php";
+    }
     const inputNick = document.getElementById('input-nick');
     const modalDuplicate = document.getElementById('modal-duplicate');
     const dupModalName = document.getElementById('dup-modal-name');
