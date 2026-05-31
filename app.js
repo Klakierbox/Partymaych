@@ -154,9 +154,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // ==========================================================================
-    // 1. INITIALIZATION & ONBOARDING SETUP
+    // 1. INITIALIZATION, ONBOARDING & SERVER API CONFIG
     // ==========================================================================
     
+    const API_URL = "https://k-27lab.pl/partymatch/api.php";
+    const inputNick = document.getElementById('input-nick');
+    const modalDuplicate = document.getElementById('modal-duplicate');
+    const dupModalName = document.getElementById('dup-modal-name');
+    const dupModalNick = document.getElementById('dup-modal-nick');
+    const btnDupExisting = document.getElementById('btn-dup-existing');
+    const btnDupNew = document.getElementById('btn-dup-new');
+    const activeGuestsContainer = document.getElementById('active-guests-container');
+
+    // Helper function to query the PHP Hostido API
+    async function apiFetch(action, method = 'GET', body = null) {
+        try {
+            const options = { method };
+            if (body) {
+                options.headers = { 'Content-Type': 'application/json' };
+                options.body = JSON.stringify(body);
+            }
+            const res = await fetch(`${API_URL}?action=${action}`, options);
+            if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+            return await res.json();
+        } catch (e) {
+            console.error(`[API Error] Action: ${action}`, e);
+            return null;
+        }
+    }
+
     function init() {
         // Render Avatars
         AVATARS.forEach((av, idx) => {
@@ -218,7 +244,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 toggleDemoModeElements();
 
                 if (gameState.user) {
-                    goToDashboard();
+                    // Sync immediately and go to dashboard
+                    syncWithServer().then(() => {
+                        goToDashboard();
+                    });
                     return;
                 }
             } catch (e) {
@@ -238,6 +267,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Initialize virtual guests for simulation if not already exists
         initMockGuests();
+
+        // Start background synchronization polling loop (runs every 10 seconds)
+        setInterval(async () => {
+            if (gameState.user) {
+                await syncWithServer();
+            }
+        }, 10000);
     }
 
     function handleTagSelection() {
@@ -277,6 +313,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return {
                 id: `guest_${idx}`,
                 name: name,
+                nick: name, // Default nickname matches name for bots
                 table: tableNum,
                 team: team,
                 avatar: av,
@@ -287,10 +324,41 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Dynamic background sync loop
+    async function syncWithServer() {
+        if (!gameState.user) return;
+        
+        // 1. Fetch active guest list from server
+        const remoteGuests = await apiFetch('get_guests');
+        if (remoteGuests && Array.isArray(remoteGuests)) {
+            // Find my own updated profile on server
+            const meRemote = remoteGuests.find(g => 
+                g.name.toLowerCase().trim() === gameState.user.name.toLowerCase().trim() &&
+                g.nick.toLowerCase().trim() === gameState.user.nick.toLowerCase().trim()
+            );
+            
+            if (meRemote) {
+                // Update local points if changed on server
+                if (gameState.user.points !== meRemote.points) {
+                    gameState.user.points = meRemote.points;
+                    headerPoints.innerText = gameState.user.points;
+                    saveGameState();
+                }
+            }
+            
+            // Render leaderboards and guest lists
+            renderLeaderboard(remoteGuests);
+            renderActiveGuestsList(remoteGuests);
+            populateToastRecipients(remoteGuests);
+        }
+    }
+
     // Submit Onboarding form
-    formOnboarding.addEventListener('submit', (e) => {
+    formOnboarding.addEventListener('submit', async (e) => {
         e.preventDefault();
         
+        const name = inputName.value.trim();
+        const nick = inputNick.value.trim();
         const selectedAvatarEl = document.querySelector('.avatar-item.selected');
         const selectedTeamEl = document.querySelector('input[name="input-team"]:checked');
         const checkedTagTexts = Array.from(document.querySelectorAll('.tag-checkbox:checked')).map(el => {
@@ -298,20 +366,100 @@ document.addEventListener('DOMContentLoaded', () => {
             return tagObj ? tagObj.text : el.value;
         });
 
-        // Create player profile
-        gameState.user = {
-            id: 'player_user',
-            name: inputName.value.trim(),
-            table: parseInt(inputTable.value),
-            team: selectedTeamEl.value,
-            avatar: selectedAvatarEl ? selectedAvatarEl.dataset.avatar : '🤵',
-            tags: checkedTagTexts,
-            pin: String(1000 + Math.floor(Math.random() * 9000)), // Custom PIN
-            points: 0
-        };
+        // Query the server to see if a guest with this exact combination already exists
+        btnStart.setAttribute('disabled', 'true');
+        btnStart.innerHTML = '<i class="animate-spin">🔄</i> Sprawdzanie...';
 
-        saveGameState();
-        goToDashboard();
+        const checkRes = await apiFetch(`check_user&name=${encodeURIComponent(name)}&nick=${encodeURIComponent(nick)}`);
+        
+        btnStart.removeAttribute('disabled');
+        btnStart.innerHTML = '<span>Wejdź do gry</span> <i data-lucide="arrow-right"></i>';
+        lucide.createIcons();
+
+        if (checkRes && checkRes.exists) {
+            // Combination already exists: trigger duplicate account popup modal
+            dupModalName.innerText = name;
+            dupModalNick.innerText = nick;
+            modalDuplicate.classList.add('active');
+            
+            // Store temporary profile data to register/restore on click
+            modalDuplicate.dataset.name = name;
+            modalDuplicate.dataset.nick = nick;
+            modalDuplicate.dataset.table = inputTable.value;
+            modalDuplicate.dataset.team = selectedTeamEl.value;
+            modalDuplicate.dataset.avatar = selectedAvatarEl ? selectedAvatarEl.dataset.avatar : '🤵';
+            modalDuplicate.dataset.tags = JSON.stringify(checkedTagTexts);
+        } else {
+            // Brand new registration
+            await registerUserOnServer({
+                name,
+                nick,
+                table: parseInt(inputTable.value),
+                team: selectedTeamEl.value,
+                avatar: selectedAvatarEl ? selectedAvatarEl.dataset.avatar : '🤵',
+                tags: checkedTagTexts
+            });
+        }
+    });
+
+    // Helper to register user and navigate to dashboard
+    async function registerUserOnServer(profile) {
+        btnStart.setAttribute('disabled', 'true');
+        
+        const regRes = await apiFetch('register', 'POST', profile);
+        
+        if (regRes && regRes.status === 'success') {
+            gameState.user = regRes.user;
+            saveGameState();
+            goToDashboard();
+        } else {
+            alert("Błąd rejestracji na serwerze! Sprawdź swoje połączenie.");
+            btnStart.removeAttribute('disabled');
+        }
+    }
+
+    // Modal Duplicate: "Tak, to ja! Powróć do gry" button
+    btnDupExisting.addEventListener('click', async () => {
+        const name = modalDuplicate.dataset.name;
+        const nick = modalDuplicate.dataset.nick;
+        
+        modalDuplicate.classList.remove('active');
+        btnStart.setAttribute('disabled', 'true');
+        
+        // Directly restore by triggering the register endpoint (acts as restore in PHP)
+        const restoreRes = await apiFetch('register', 'POST', {
+            name,
+            nick,
+            table: parseInt(modalDuplicate.dataset.table),
+            team: modalDuplicate.dataset.team,
+            avatar: modalDuplicate.dataset.avatar,
+            tags: JSON.parse(modalDuplicate.dataset.tags)
+        });
+        
+        if (restoreRes && restoreRes.status === 'success') {
+            gameState.user = restoreRes.user;
+            saveGameState();
+            goToDashboard();
+            
+            // Alert user of successful account recovery
+            alert(`Witaj z powrotem, ${nick}! Twoje punkty (${restoreRes.user.points}) zostały przywrócone! 🎉`);
+        } else {
+            alert("Nie udało się odzyskać konta. Spróbuj ponownie.");
+            btnStart.removeAttribute('disabled');
+        }
+    });
+
+    // Modal Duplicate: "Nie, jestem nowym uczestnikiem" button
+    btnDupNew.addEventListener('click', () => {
+        modalDuplicate.classList.remove('active');
+        alert("To imię i nick są już zajęte na weselu! Zmień lekko swój Nick (np. dopisz pierwszą literę nazwiska lub liczbę), aby inni goście nie pomylili Was w misjach.");
+        
+        // Focus nickname input and highlight it to prompt change
+        inputNick.focus();
+        inputNick.style.borderColor = "var(--color-bride)";
+        setTimeout(() => {
+            inputNick.style.borderColor = "";
+        }, 3000);
     });
 
 
@@ -336,19 +484,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Render Header info
         headerAvatar.innerText = gameState.user.avatar;
-        headerName.innerText = gameState.user.name;
+        headerName.innerText = gameState.user.nick; // Display nick in header
         headerDetails.innerText = `Stół ${gameState.user.table} • Team ${gameState.user.team}`;
         headerPoints.innerText = gameState.user.points;
 
-        // Render My Code Tab details
-        profilePin.innerText = gameState.user.pin;
+        // Render My Profile details
+        profilePin.innerText = `${gameState.user.name} (${gameState.user.nick})`; // Pin field replaced by full Name & Nick
         profileTags.innerHTML = gameState.user.tags.map(t => `<span class="mini-tag">${t}</span>`).join('');
 
-        // Draw Player QR Code (client-side render)
+        // Draw Player QR Code (contains name and nick for verification, NO PIN)
         const qrContent = JSON.stringify({
             id: gameState.user.id,
             name: gameState.user.name,
-            pin: gameState.user.pin
+            nick: gameState.user.nick
         });
         
         new QRious({
@@ -360,10 +508,11 @@ document.addEventListener('DOMContentLoaded', () => {
             level: 'H'
         });
 
+        // Trigger immediate sync to fetch other players
+        syncWithServer();
+
         // Refresh dynamic UI elements
         renderMissionTab();
-        renderLeaderboard();
-        populateToastRecipients();
         renderToastOptions();
         renderAdminMissions();
         updateDjBrandingFooters();
@@ -381,9 +530,10 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.classList.add('active');
             document.getElementById(`tab-${targetTab}`).classList.add('active');
 
-            // Render/Refresh specific tab content when selected
-            if (targetTab === 'leaderboard') renderLeaderboard();
-            if (targetTab === 'toast') populateToastRecipients();
+            // Trigger sync when Leaderboard or Toast tabs are opened
+            if (targetTab === 'leaderboard' || targetTab === 'toast') {
+                syncWithServer();
+            }
         });
     });
 
@@ -432,8 +582,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Dynamically toggle elements and lists
         toggleDemoModeElements();
-        renderLeaderboard();
-        populateToastRecipients();
+        syncWithServer();
         renderMissionTab();
     });
 
@@ -453,7 +602,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="target-profile-box">
                         <div class="target-avatar">${m.targetAvatar}</div>
                         <div>
-                            <div class="target-name">${m.targetName}</div>
+                            <div class="target-name">${m.targetNick}</div>
                             <div class="target-meta">Stół ${m.targetTable} • Team ${m.targetTeam}</div>
                             <div class="target-tags-mini">
                                 ${m.targetTags.map(t => `<span class="mini-tag">${t}</span>`).join('')}
@@ -468,7 +617,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     <div class="sim-cheat-note">
                         <p style="font-size: 0.7rem; color: #a0a0a0; font-style: italic; margin-bottom: 8px; text-align: center;">
-                            💡 Wskazówka testowa: PIN tego gościa to <strong>${m.targetPin}</strong> (wpisz go w skanerze, by zaliczyć).
+                            💡 Wskazówka: Zeskanuj kod gościa lub wpisz jego Nick (<strong>${m.targetNick}</strong>) w skanerze, by zaliczyć.
                         </p>
                     </div>
 
@@ -485,21 +634,14 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('btn-open-scanner').addEventListener('click', openScannerModal);
         } else {
             // RENDER EMPTY STATE (DRAW MISSION BUTTON)
-            
-            // If Demo Mode is OFF and there are no mock guests configured, we inform the user to scan real QR codes
-            const drawButtonText = gameState.demoMode 
-                ? `<i data-lucide="dices"></i> Losuj Nową Misję (+100 pkt)`
-                : `<i data-lucide="dices"></i> Losuj Wyzwanie Weselne (+100 pkt)`;
+            const drawButtonText = `<i data-lucide="dices"></i> Losuj Wyzwanie Weselne (+100 pkt)`;
 
             missionCardWrapper.innerHTML = `
                 <div class="glass-card empty-mission-card">
                     <div class="empty-icon">🎲</div>
                     <h3 class="font-serif gold-text">Gotowy na misję?</h3>
                     <p class="section-desc" style="margin: 8px 0 20px;">
-                        ${gameState.demoMode 
-                            ? 'Wylosuj wyzwanie integracyjne, poznaj kogoś nowego na sali i zdobądź punkty do tabeli liderów!'
-                            : 'Prawdziwa integracja rozpoczęta! Wylosuj zadanie i odszukaj fizycznego gościa na sali weselnej!'
-                        }
+                        Wylosuj wyzwanie integracyjne, poznaj kogoś nowego na sali i zdobądź punkty do tabeli liderów!
                     </p>
                     <button id="btn-draw-mission" class="btn btn-gold">
                         ${drawButtonText}
@@ -513,35 +655,49 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function generateNewMission() {
-        if (!gameState.mockGuests.length) return;
+    async function generateNewMission() {
         if (!gameState.missionTemplates || !gameState.missionTemplates.length) {
             alert("Brak dostępnych szablonów misji w puli! Dodaj wyzwanie w Panelu Organizatora.");
             return;
         }
 
-        // Draw targets
-        let randomTarget;
+        let candidates = [];
         
         if (gameState.demoMode) {
-            // Pick a random virtual guest (bot)
-            randomTarget = gameState.mockGuests[Math.floor(Math.random() * gameState.mockGuests.length)];
+            // Demo mode: use mock virtual bots
+            candidates = [...gameState.mockGuests];
         } else {
-            // B2B Real Mode: If there are other guests, let's target them.
-            // As this is a database-free prototype for testing, we still pick a random guest from mockGuests to let them
-            // play missions but they can physically input or scan ANY phone that has that name!
-            randomTarget = gameState.mockGuests[Math.floor(Math.random() * gameState.mockGuests.length)];
+            // Live multiplayer mode: retrieve real players registered on server
+            const remoteGuests = await apiFetch('get_guests');
+            if (remoteGuests && Array.isArray(remoteGuests)) {
+                // Exclude myself from active targets
+                candidates = remoteGuests.filter(g => 
+                    g.name.toLowerCase().trim() !== gameState.user.name.toLowerCase().trim() ||
+                    g.nick.toLowerCase().trim() !== gameState.user.nick.toLowerCase().trim()
+                );
+            }
         }
+
+        if (!candidates.length) {
+            alert(gameState.demoMode 
+                ? "Brak gości do wylosowania!" 
+                : "Nie ma jeszcze innych zalogowanych gości weselnych! Poczekaj, aż znajomi dołączą do zabawy na swoich telefonach."
+            );
+            return;
+        }
+
+        // Draw a target guest
+        const randomTarget = candidates[Math.floor(Math.random() * candidates.length)];
         
         // Pick random template from the dynamic pool
         const template = gameState.missionTemplates[Math.floor(Math.random() * gameState.missionTemplates.length)];
         
         // Select random tag from target's tags to specify in the prompt
-        const tagSpec = randomTarget.tags[Math.floor(Math.random() * randomTarget.tags.length)] || '#KrólParkietu';
+        const tagSpec = randomTarget.tags[Math.floor(Math.random() * randomTarget.tags.length)] || 'Król Parkietu';
 
         // Interpolate template fields
         const instruction = template
-            .replace(/{name}/g, randomTarget.name)
+            .replace(/{name}/g, randomTarget.nick) // Display nickname in instruction
             .replace(/{team}/g, `Team ${randomTarget.team}`)
             .replace(/{table}/g, randomTarget.table)
             .replace(/{tag}/g, tagSpec);
@@ -550,11 +706,11 @@ document.addEventListener('DOMContentLoaded', () => {
             id: `mission_${Date.now()}`,
             targetId: randomTarget.id,
             targetName: randomTarget.name,
+            targetNick: randomTarget.nick,
             targetAvatar: randomTarget.avatar,
             targetTable: randomTarget.table,
             targetTeam: randomTarget.team,
             targetTags: randomTarget.tags,
-            targetPin: randomTarget.pin,
             instruction: instruction,
             pointsValue: 100
         };
@@ -573,7 +729,6 @@ document.addEventListener('DOMContentLoaded', () => {
         inputPinVerify.value = '';
 
         // Initialize HTML5-QRCode Scanner (client-side library)
-        // Delay scanner start slightly to allow modal animation to complete smoothly
         setTimeout(() => {
             html5QrScanner = new Html5Qrcode("scanner-view");
             const config = { fps: 10, qrbox: { width: 220, height: 220 } };
@@ -584,12 +739,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 onQrScanSuccess,
                 onQrScanError
             ).catch(err => {
-                console.warn("Nie można uruchomić aparatu (prawdopodobnie brak uprawnień):", err);
+                console.warn("Nie można uruchomić aparatu:", err);
                 document.querySelector('.scanner-camera-container').innerHTML = `
                     <div style="padding: 30px; text-align: center; color: var(--text-muted); font-size: 0.85rem;">
                         <i data-lucide="camera-off" style="width:40px; height:40px; color:#ef4444; margin-bottom:12px;"></i>
                         <p>Brak dostępu do aparatu.</p>
-                        <p style="margin-top:6px;">Użyj bezpiecznego <strong>4-cyfrowego kodu PIN</strong> wpisując go poniżej.</p>
+                        <p style="margin-top:6px;">Wpisz bezpiecznie **Nick gościa** na klawiaturze poniżej.</p>
                     </div>
                 `;
                 lucide.createIcons();
@@ -616,55 +771,61 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const data = JSON.parse(decodedText);
             
-            // DECENTRALIZED VERIFICATION: Matches by PIN OR Name!
-            // This is genius because it allows two different physical phones to scan each other
-            // successfully offline without a shared database!
+            // Verify by comparing unique Nickname or full Name (NO PIN)
             const isMatch = gameState.activeMission && (
-                data.pin === gameState.activeMission.targetPin ||
-                (data.name && data.name.toLowerCase().trim() === gameState.activeMission.targetName.toLowerCase().trim())
+                data.nick.toLowerCase().trim() === gameState.activeMission.targetNick.toLowerCase().trim() ||
+                data.name.toLowerCase().trim() === gameState.activeMission.targetName.toLowerCase().trim()
             );
 
             if (isMatch) {
                 completeActiveMission();
             } else {
-                alert(`Zeskanowano kod gościa: "${data.name}", ale Twój cel misji to: "${gameState.activeMission.targetName}". Spróbuj ponownie!`);
+                alert(`Zeskanowano kod gościa: "${data.nick}", ale Twój cel to: "${gameState.activeMission.targetNick}".`);
             }
         } catch (e) {
-            console.error("Zeskanowano nieznany format kodu QR:", decodedText);
+            console.error("Nieznany format kodu QR:", decodedText);
         }
     }
 
-    function onQrScanError(errorMessage) {
-        // Safe to ignore, triggers on every frame where QR code is not detected
-    }
+    function onQrScanError(errorMessage) {}
 
-    // Manual PIN verification
+    // Manual Nickname verification (Replaced PIN)
     btnVerifyPinSubmit.addEventListener('click', () => {
-        const enteredPin = inputPinVerify.value.trim();
-        if (enteredPin.length !== 4) {
-            alert("Wprowadź pełny, 4-cyfrowy kod PIN!");
+        const enteredNick = inputPinVerify.value.trim().toLowerCase();
+        if (!enteredNick) {
+            alert("Wpisz Nick gościa!");
             return;
         }
 
-        if (gameState.activeMission && enteredPin === gameState.activeMission.targetPin) {
+        if (gameState.activeMission && enteredNick === gameState.activeMission.targetNick.toLowerCase()) {
             completeActiveMission();
         } else {
-            alert("Niepoprawny PIN! Upewnij się, że rozmawiasz z odpowiednią osobą i wpisujesz kod ze strefy 'Mój Kod QR' na jej telefonie.");
+            alert("Błędny Nick! Upewnij się, że wpisujesz poprawny przydomek szukanego gościa.");
         }
     });
 
-    function completeActiveMission() {
+    async function completeActiveMission() {
         const pointsAwarded = gameState.activeMission.pointsValue;
         gameState.user.points += pointsAwarded;
         
-        // Increment event metrics
+        // Increment metrics
         gameState.missionsCompletedCount += 1;
         
-        // Remove current active mission
+        // 1. Send scoring update to server API
+        await apiFetch('add_points', 'POST', {
+            name: gameState.user.name,
+            nick: gameState.user.nick,
+            points: pointsAwarded
+        });
+
+        // Remove active mission
         gameState.activeMission = null;
         
         saveGameState();
         closeScannerModal();
+        
+        // Sync with server immediately to update leaderboard
+        await syncWithServer();
         renderDashboard();
 
         // Canvas Confetti blast celebration!
@@ -699,42 +860,57 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // ==========================================================================
-    // 6. LEADERBOARD SYSTEM (🏆)
+    // 6. LEADERBOARD & ACTIVE GUESTS DISPLAY SYSTEMS
     // ==========================================================================
 
-    function renderLeaderboard() {
+    function renderLeaderboard(serverGuests = null) {
         if (!gameState.user) return;
 
-        // Combine player and mock guests list
         let allParticipants = [];
         
         if (gameState.demoMode) {
-            // Include both player and wirtualni goście (bots)
+            // Combine local player, remote server guests, and virtual mock guests
+            const remoteFiltered = (serverGuests || []).filter(rg => 
+                rg.name.toLowerCase().trim() !== gameState.user.name.toLowerCase().trim()
+            );
+            
             allParticipants = [
                 {
                     id: gameState.user.id,
                     name: gameState.user.name,
+                    nick: gameState.user.nick,
                     table: gameState.user.table,
                     team: gameState.user.team,
                     avatar: gameState.user.avatar,
                     points: gameState.user.points,
                     isMe: true
                 },
+                ...remoteFiltered.map(g => ({ ...g, isMe: false })),
                 ...gameState.mockGuests.map(g => ({ ...g, isMe: false }))
             ];
         } else {
-            // Live Wedding Mode: Include ONLY the player (waiting for other real phone logins)
-            allParticipants = [
-                {
-                    id: gameState.user.id,
-                    name: gameState.user.name,
-                    table: gameState.user.table,
-                    team: gameState.user.team,
-                    avatar: gameState.user.avatar,
-                    points: gameState.user.points,
-                    isMe: true
-                }
-            ];
+            // Live multiplayer mode: use ONLY guests registered on server
+            if (serverGuests && Array.isArray(serverGuests)) {
+                allParticipants = serverGuests.map(g => {
+                    const isMe = g.name.toLowerCase().trim() === gameState.user.name.toLowerCase().trim() &&
+                               g.nick.toLowerCase().trim() === gameState.user.nick.toLowerCase().trim();
+                    return { ...g, isMe };
+                });
+            } else {
+                // Fallback to only myself if server list not yet loaded
+                allParticipants = [
+                    {
+                        id: gameState.user.id,
+                        name: gameState.user.name,
+                        nick: gameState.user.nick,
+                        table: gameState.user.table,
+                        team: gameState.user.team,
+                        avatar: gameState.user.avatar,
+                        points: gameState.user.points,
+                        isMe: true
+                    }
+                ];
+            }
         }
 
         // Sort by points descending
@@ -747,7 +923,6 @@ document.addEventListener('DOMContentLoaded', () => {
             let rankClass = '';
             let rankDisplay = rank;
 
-            // Crown/Medal icons for Top 3
             if (rank === 1) { rankClass = 'gold-rank'; rankDisplay = '👑'; }
             else if (rank === 2) { rankClass = 'silver-rank'; rankDisplay = '🥈'; }
             else if (rank === 3) { rankClass = 'bronze-rank'; rankDisplay = '🥉'; }
@@ -759,7 +934,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="leader-rank ${rankClass}">${rankDisplay}</div>
                     <div class="leader-avatar">${p.avatar}</div>
                     <div>
-                        <div class="leader-name">${p.name} ${p.isMe ? '(Ty)' : ''}</div>
+                        <div class="leader-name">${p.nick} ${p.isMe ? '(Ty)' : ''}</div>
                         <div class="leader-team-table">Stół ${p.table} • Team ${p.team}</div>
                     </div>
                 </div>
@@ -769,33 +944,93 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Render the beautiful guest list under Leaderboard
+    function renderActiveGuestsList(serverGuests = null) {
+        if (!activeGuestsContainer) return;
+        
+        let allGuests = [];
+        
+        if (gameState.demoMode) {
+            allGuests = [...gameState.mockGuests];
+        } else if (serverGuests && Array.isArray(serverGuests)) {
+            // Exclude myself from visual list
+            allGuests = serverGuests.filter(g => 
+                g.name.toLowerCase().trim() !== gameState.user.name.toLowerCase().trim() ||
+                g.nick.toLowerCase().trim() !== gameState.user.nick.toLowerCase().trim()
+            );
+        }
+
+        if (!allGuests.length) {
+            activeGuestsContainer.innerHTML = `
+                <div style="padding:16px; text-align:center; color:var(--text-muted); font-size:0.8rem; font-style:italic;">
+                    Nie ma jeszcze innych gości w grze. Opowiedz znajomym przy stoliku o grze! 🥂
+                </div>
+            `;
+            return;
+        }
+
+        activeGuestsContainer.innerHTML = '';
+
+        allGuests.forEach(g => {
+            const el = document.createElement('div');
+            el.style.cssText = 'background:rgba(255,255,255,0.02); border:1px solid var(--glass-border); border-radius:12px; padding:10px 12px; display:flex; align-items:center; gap:12px; justify-content:space-between;';
+            
+            // Generate tags block
+            const tagsHtml = g.tags.map(t => `<span class="mini-tag" style="font-size:0.6rem; padding:1px 4px; background:rgba(255,255,255,0.04);">${t}</span>`).join(' ');
+            
+            const teamBadgeClass = g.team === 'Panna Młoda' ? 'color-bride' : 'color-groom';
+            const teamColor = g.team === 'Panna Młoda' ? 'var(--color-bride)' : 'var(--color-groom)';
+
+            el.innerHTML = `
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="font-size:1.6rem; width:34px; height:34px; border-radius:50%; background:rgba(255,255,255,0.04); display:flex; justify-content:center; align-items:center;">${g.avatar}</div>
+                    <div>
+                        <div style="font-size:0.85rem; font-weight:600;">${g.nick} <span style="font-size:0.65rem; color:var(--text-muted); font-weight:300;">(${g.name})</span></div>
+                        <div style="font-size:0.7rem; color:var(--text-muted); margin-top:2px;">
+                            Stół <strong style="color:#fff;">${g.table}</strong> • <span style="color:${teamColor};">${g.team}</span>
+                        </div>
+                        <div style="display:flex; gap:3px; margin-top:4px; flex-wrap:wrap;">
+                            ${tagsHtml}
+                        </div>
+                    </div>
+                </div>
+                <div style="font-size:0.75rem; color:var(--gold-text-color); font-weight:bold;">${g.points} pkt</div>
+            `;
+            
+            activeGuestsContainer.appendChild(el);
+        });
+    }
+
 
     // ==========================================================================
     // 7. TOAST ICEBREAKERS CHAT MESSAGE SYSTEM (💬)
     // ==========================================================================
 
-    function populateToastRecipients() {
+    function populateToastRecipients(serverGuests = null) {
         const currentSelection = selectRecipient.value;
         selectRecipient.innerHTML = '';
 
-        if (!gameState.demoMode) {
-            // Real Mode without backend: Show informational option
-            selectRecipient.innerHTML = '<option value="" disabled selected>Rozpocznij rozmowę z weselnikiem...</option>';
-            // Add wirtualni goście as placeholders so they can still send tests if they want,
-            // or let's keep them hidden and let other real names show. For MVP testing, having bots
-            // visible in the select list is actually helpful so friends can send messages! Let's keep them available.
-        } else {
-            selectRecipient.innerHTML = '<option value="" disabled selected>Wybierz kogoś ze stołu...</option>';
+        selectRecipient.innerHTML = '<option value="" disabled selected>Rozpocznij rozmowę z weselnikiem...</option>';
+        
+        let targetList = [];
+        if (gameState.demoMode) {
+            targetList = [...gameState.mockGuests];
+        } else if (serverGuests && Array.isArray(serverGuests)) {
+            // Exclude myself
+            targetList = serverGuests.filter(g => 
+                g.name.toLowerCase().trim() !== gameState.user.name.toLowerCase().trim() ||
+                g.nick.toLowerCase().trim() !== gameState.user.nick.toLowerCase().trim()
+            );
         }
         
-        // Add all wirtualni goście as select options grouped by table
-        const sortedGuests = [...gameState.mockGuests].sort((a, b) => a.table - b.table);
+        // Sort grouped by table
+        const sorted = [...targetList].sort((a, b) => a.table - b.table);
         
-        sortedGuests.forEach(g => {
+        sorted.forEach(g => {
             const option = document.createElement('option');
-            option.value = g.id;
-            option.innerText = `${g.avatar} ${g.name} (Stół ${g.table} • Team ${g.team})`;
-            if (g.id === currentSelection) option.selected = true;
+            option.value = g.id || `remote_${g.name}_${g.nick}`;
+            option.innerText = `${g.avatar} ${g.nick} (Stół ${g.table} • Team ${g.team})`;
+            if (option.value === currentSelection) option.selected = true;
             selectRecipient.appendChild(option);
         });
     }
@@ -834,8 +1069,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (!selectedRecipientId || !selectedRadio) return;
 
-        const recipient = gameState.mockGuests.find(g => g.id === selectedRecipientId);
-        if (!recipient) return;
+        // Get target name from dropdown text
+        const selectedOptionText = selectRecipient.options[selectRecipient.selectedIndex].text;
+        const targetCleanName = selectedOptionText.split(' ').slice(1, -2).join(' ') || 'Gościa';
 
         // Send Toast logic
         btnSendToast.setAttribute('disabled', 'true');
@@ -847,7 +1083,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Simulate network delay
         setTimeout(() => {
-            alert(`Toast pomyślnie wysłany do ${recipient.name}! Przełamaliście lody! 🥂`);
+            alert(`Toast pomyślnie wysłany do: ${targetCleanName}! Przełamaliście lody! 🥂`);
             
             // Reset fields
             selectRecipient.value = '';
@@ -908,7 +1144,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Gears Settings click - Open Admin Modal
     function openAdminPanel() {
-        // Populate inputs with current B2B values
         inputDjName.value = gameState.djName || '';
         inputDjInsta.value = gameState.djInstagram || '';
         checkboxDemoMode.checked = gameState.demoMode;
@@ -933,11 +1168,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const endPos = textareaNewMission.selectionEnd;
             const text = textareaNewMission.value;
 
-            // Insert at current cursor position
             textareaNewMission.value = text.substring(0, startPos) + token + text.substring(endPos, text.length);
             textareaNewMission.focus();
             
-            // Move cursor to after the inserted variable token
             const newCursorPos = startPos + token.length;
             textareaNewMission.setSelectionRange(newCursorPos, newCursorPos);
         });
@@ -956,11 +1189,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Add to active templates list
         gameState.missionTemplates.push(text);
         saveGameState();
         
-        // Reset form
         textareaNewMission.value = '';
         renderAdminMissions();
         renderMissionTab();
@@ -982,28 +1213,30 @@ document.addEventListener('DOMContentLoaded', () => {
         modalWrapped.classList.remove('active');
     });
 
-    function generateInstagramStoryStats() {
-        // 1. Populate persistent counts
+    async function generateInstagramStoryStats() {
         wrappedStatMissions.innerText = gameState.missionsCompletedCount;
         wrappedStatToasts.innerText = gameState.toastsSentCount;
 
-        // 2. Calculate the "Most Social Table" (Table with the highest combined points)
-        // Compile all wedding attendees scores grouped by table number
         const tablePoints = {};
         
-        // Include player
         if (gameState.user) {
             tablePoints[gameState.user.table] = (tablePoints[gameState.user.table] || 0) + gameState.user.points;
         }
         
-        // Include bots (Only if Demo Mode is active!)
         if (gameState.demoMode) {
             gameState.mockGuests.forEach(g => {
                 tablePoints[g.table] = (tablePoints[g.table] || 0) + g.points;
             });
+        } else {
+            const remoteGuests = await apiFetch('get_guests');
+            if (remoteGuests && Array.isArray(remoteGuests)) {
+                remoteGuests.forEach(g => {
+                    tablePoints[g.table] = (tablePoints[g.table] || 0) + g.points;
+                });
+            }
         }
 
-        let topTableNum = gameState.user ? gameState.user.table : 4; // Default fallback
+        let topTableNum = gameState.user ? gameState.user.table : 4;
         let maxTablePoints = -1;
         
         for (const [table, pts] of Object.entries(tablePoints)) {
@@ -1015,10 +1248,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         wrappedStatTable.innerText = `Stolik nr ${topTableNum}`;
 
-        // 3. Calculate the "Dominant Guest Trait"
-        // Tally occurrences of all tags from simulated guests
         const tagCounts = {};
         let totalTagsCount = 0;
+
+        if (gameState.user) {
+            gameState.user.tags.forEach(t => {
+                tagCounts[t] = (tagCounts[t] || 0) + 1;
+                totalTagsCount++;
+            });
+        }
 
         if (gameState.demoMode) {
             gameState.mockGuests.forEach(g => {
@@ -1027,17 +1265,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     totalTagsCount++;
                 });
             });
+        } else {
+            const remoteGuests = await apiFetch('get_guests');
+            if (remoteGuests && Array.isArray(remoteGuests)) {
+                remoteGuests.forEach(g => {
+                    g.tags.forEach(t => {
+                        tagCounts[t] = (tagCounts[t] || 0) + 1;
+                        totalTagsCount++;
+                    });
+                });
+            }
         }
 
-        // Add player tags
-        if (gameState.user) {
-            gameState.user.tags.forEach(t => {
-                tagCounts[t] = (tagCounts[t] || 0) + 1;
-                totalTagsCount++;
-            });
-        }
-
-        let dominantTagText = '🕺 Król Parkietu'; // Default fallback
+        let dominantTagText = '🕺 Król Parkietu';
         let maxTagCount = -1;
 
         for (const [tag, count] of Object.entries(tagCounts)) {
@@ -1047,7 +1287,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        const totalAttendees = gameState.demoMode ? (gameState.mockGuests.length + 1) : 1;
+        let totalAttendees = 1;
+        if (gameState.demoMode) {
+            totalAttendees = gameState.mockGuests.length + 1;
+        } else {
+            const remoteGuests = await apiFetch('get_guests');
+            totalAttendees = remoteGuests && Array.isArray(remoteGuests) ? remoteGuests.length : 1;
+        }
+
         const percentage = Math.round((maxTagCount / totalAttendees) * 100);
         wrappedStatTag.innerText = `${dominantTagText} (${percentage > 0 ? percentage : 68}%)`;
     }
@@ -1057,22 +1304,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // 10. MULTIPLAYER DEMO SIMULATOR PANEL (Testing Controls)
     // ==========================================================================
 
-    // SIMULATOR: Mock active gameplay (bots gain points, compete, and finish missions)
     btnSimAction.addEventListener('click', () => {
         if (!gameState.demoMode) return;
 
-        // Animate points update on bots
         gameState.mockGuests.forEach(g => {
             if (Math.random() > 0.4) {
-                g.points += Math.floor(Math.random() * 80) + 20; // Bots finish missions
-                gameState.missionsCompletedCount += 1; // Increment overall index
+                g.points += Math.floor(Math.random() * 80) + 20;
+                gameState.missionsCompletedCount += 1;
             }
             if (Math.random() > 0.6) {
-                gameState.toastsSentCount += 1; // Bots send toasts
+                gameState.toastsSentCount += 1;
             }
         });
 
-        // Trigger confetti for the bot simulation alert
         confetti({
             particleCount: 20,
             spread: 30,
@@ -1081,9 +1325,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         saveGameState();
-        renderLeaderboard();
+        syncWithServer();
 
-        // Show quick floating indicator
         const banner = document.createElement('div');
         banner.style.cssText = 'position:fixed; top:20px; left:50%; transform:translateX(-50%); background:rgba(191,149,63,0.95); color:#000; padding:8px 16px; border-radius:30px; font-size:0.75rem; font-weight:700; z-index:9999; box-shadow:0 4px 15px rgba(0,0,0,0.5); pointer-events:none; transition:all 0.3s ease;';
         banner.innerText = '⚡ Wirtualni goście ukończyli misje! Tabela liderów zaktualizowana.';
@@ -1094,7 +1337,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 1800);
     });
 
-    // SIMULATOR: Receive an incoming toast notification from a random bot
     btnSimIncomingToast.addEventListener('click', triggerIncomingToastSimulation);
 
     function triggerIncomingToastSimulation() {
@@ -1103,7 +1345,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const randomBot = gameState.mockGuests[Math.floor(Math.random() * gameState.mockGuests.length)];
         const randomMsg = TOASTS[Math.floor(Math.random() * TOASTS.length)];
 
-        notificationSender.innerText = `${randomBot.avatar} ${randomBot.name} (Stolik ${randomBot.table})`;
+        notificationSender.innerText = `${randomBot.avatar} ${randomBot.nick} (Stolik ${randomBot.table})`;
         notificationText.innerText = randomMsg;
         modalNotification.classList.add('active');
     }
@@ -1111,7 +1353,6 @@ document.addEventListener('DOMContentLoaded', () => {
     btnCloseNotification.addEventListener('click', () => {
         modalNotification.classList.remove('active');
         
-        // Redirect user directly to Toast Tab to reply
         const toastNavBtn = document.querySelector('.nav-item[data-tab="toast"]');
         if (toastNavBtn) toastNavBtn.click();
     });
